@@ -102,6 +102,9 @@ os.environ["WANDB_DISABLED"] = "true"
 
 trainer.train() #This is 1.5B
 
+trainer.save_model(model_name)
+
+
 based_model
 
 ### in ra output tu 1 prompt
