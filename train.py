@@ -67,7 +67,7 @@ def preprocess_function(examples):
 
 tokenized_dataset = train_dataset.map(preprocess_function, batched=True, remove_columns=train_dataset.column_names)
 
-tokenized_eval_dataset = test_dataset.map(preprocess_function, batched=True, remove_columns=gsm8k_test.column_names)
+tokenized_eval_dataset = test_dataset.map(preprocess_function, batched=True, remove_columns=test_dataset.column_names)
 
 # %cd /content/drive/MyDrive/qwen
 
