@@ -15,8 +15,17 @@ import argparse
 argparser = argparse.ArgumentParser()
 argparser.add_argument('--model_name', type=str, default='qwen/Qwen2.5-1.5B')
 argparser.add_argument('--dataset', type=str, default='gsm8k')
-argparser.add_argument('--model_path', type=str, default='checkpoint-37365-20241206T082926Z-001.zip')
+argparser.add_argument('--model_path', type=str, default='checkpoint-1.5B')
 args = argparser.parse_args()
+
+
+question = 'James decides to run 3 sprints 3 times a week. He runs 60 meters each sprint. How many total meters does he run a week?'
+prompt = '''<|im_start|>user
+{question}<|im_end|>
+
+<|im_start|>assistant'''
+
+input = prompt.format(question = question)
 
 model_name = args.model_name
 
@@ -28,13 +37,10 @@ based_model = AutoModelForCausalLM.from_pretrained(model_name,
 )
 
 tokenizer = AutoTokenizer.from_pretrained(model_name)
-based_model.load_state_dict(torch.load(args.model_path))
+based_model.from_pretrained(args.model_path)
 
-prompt = '''<|im_start|>user
-Jen buys and sells candy bars. She buys candy bars for 80 cents each and sells them for a dollar each. If she buys 50 candy bars and sells 48 of them, how much profit does she make in cents?<|im_end|>
 
-<|im_start|>assistant'''
-output = based_model.generate(tokenizer(prompt, return_tensors='pt').input_ids.to('cuda'), early_stopping=True)
+output = based_model.generate(tokenizer(input, return_tensors='pt').input_ids.to('cuda'), early_stopping=True)
 
 
 print(tokenizer.decode(output[0]))
