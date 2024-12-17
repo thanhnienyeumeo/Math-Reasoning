@@ -21,14 +21,11 @@ from tqdm import tqdm
 import argparse
 
 argparser = argparse.ArgumentParser()
-argparser.add_argument('--model_name', type=str, default='qwen/Qwen2.5-0.5B-Instruct')
+argparser.add_argument('--model_name', type=str, default='qwen/Qwen2.5-1.5B-Instruct')
 argparser.add_argument('--dataset', type=str, default='gsm8k')
-argparser.add_argument('--model_path', type=str, default=None)
-argparser.add_argument('--type', type=str, default='qwen')
 args = argparser.parse_args()
 print(torch.cuda.is_bf16_supported())
 model_name = args.model_name
-type = args.type
 # model_name = "bkai-foundation-models/vietnamese-llama2-7b-120GB"
 
 based_model = AutoModelForCausalLM.from_pretrained(model_name,
@@ -53,23 +50,11 @@ train_dataset, test_dataset = dataset['train'], dataset['test']
 
 
 def preprocess_function(examples):
-    if type == 'qwen':
-        prompt = (
-                "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n"
-                "<|im_start|>user\n{instruction}\nPut your final answer within \\boxed{{}}.<|im_end|>\n"
-                "<|im_start|>assistant\n"
-            )
-    elif type == 'phi':
-        prompt = (
-                "<|system|>\nYou are a helpful assistant.\n"
-                "<|user|>\n{instruction}\nPut your final answer within \\boxed{{}}\n"
-                "<|assistant|>\n"
-            )
-    elìf type == 'llama':
-        prompt = (
-                "<s>[INST]"
-
-
+    prompt = (
+            "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n"
+            "<|im_start|>user\n{instruction}\nPut your final answer within \\boxed{{}}.<|im_end|>\n"
+            "<|im_start|>assistant\n"
+        )
     inputs = [prompt.format(instruction = question) for question in examples["question"]]
     print(inputs[0])
     targets = [f"{completion}<|im_end|>\n" for completion in examples["answer"]]
@@ -109,7 +94,7 @@ trainer = SFTTrainer(
     model=based_model,
     train_dataset=tokenized_dataset,
     eval_dataset=tokenized_eval_dataset,
-    # peft_config=peft_params, #full finetuning
+    peft_config=peft_params, #LORA
     max_seq_length=2048,
     args=training_params,
     packing=False,
