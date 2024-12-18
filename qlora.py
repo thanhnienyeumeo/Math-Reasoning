@@ -4,7 +4,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingA
 from peft import LoraConfig
 from datasets import Dataset
 import datasets
-from trl import SFTTrainer, PPOTrainer
+from trl import SFTTrainer, PPOTrainer, SFTConfig
 #load model name
 model_name = "microsoft/Phi-3.5-mini-instruct"
 from tqdm import tqdm
@@ -48,43 +48,87 @@ peft_params = LoraConfig(
 )
 
 
-metaMath = datasets.load_dataset("meta-math/MetaMathQA")
-metaMath_list = metaMath['train'].to_list()
-filter_list = []
-for i in tqdm(range(len(metaMath_list))):
-    query = metaMath_list[i]['query']
-    query_tokens = tokenizer(query, return_tensors='pt')
-    if len(query_tokens['input_ids']) > 1024:
-        continue
-    filter_list.append(metaMath_list[i])
-train_dataset = Dataset.from_list(filter_list)
-# train_dataset = metaMath['train']
+# metaMath = datasets.load_dataset("meta-math/MetaMathQA")
+# metaMath_list = metaMath['train'].to_list()
+
+# filter_list = []
+# print('Remove examples with length > 1023...........')
+# for i in tqdm(range(len(metaMath_list))):
+#     query = metaMath_list[i]['query']
+#     query_tokens = tokenizer(query, return_tensors='pt')
+#     answer = metaMath_list[i]['response']
+#     answer_tokens = tokenizer(answer, return_tensors='pt')
+#     if len(query_tokens['input_ids'][0]) > 1023 or len(answer_tokens['input_ids'][0]) > 1023:
+#         # print(i)
+#         continue
+#     filter_list.append(metaMath_list[i])
+#     # if i  > 20: break
+# train_dataset = Dataset.from_list(filter_list)
+# #save train_dataset to file
+# train_dataset.push_to_hub("Colder203/meta_math_smaller_than_1024")
+# print('number of removed examples:', len(metaMath_list) - len(filter_list))
+# exit()
+from transformers import DataCollatorWithPadding
+
+# Khởi tạo DataCollator
+data_collator = DataCollatorWithPadding(tokenizer=tokenizer, padding=True)
+train_dataset = datasets.load_dataset("Colder203/meta_math_smaller_than_1024")
+
+train_dataset = train_dataset['train']
+#keep 20% of the dataset 
+# train_dataset = train_dataset.train_test_split(test_size=0.1)['test']
+train_dataset = train_dataset.select(range(0,16))
+print('number of examples:', len(train_dataset))
 def preprocess_function(examples, question = "query", answer = "response"):
+
     prompt = (
+
             "<|system|>\nYou are a helpful assistant.\n"
+
             "<|user|>\n{instruction}\nPlease reason step by step, and put your final answer within \\boxed{{}}\n"
+
             "<|assistant|>\n"
+
         )
+
     inputs = [prompt.format(instruction = question) for question in examples[question]]
-    print(inputs[0])
+
+    # print(inputs[0])
+
     targets = [f"{completion}\n" for completion in examples[answer]]
-    print(targets[0])
+
+    # print(targets[0])
+
     # model_inputs = tokenizer(inputs, max_length=512, truncation=True, padding="max_length")
+
     model_inputs = tokenizer(inputs,
-                            #  max_length=512, padding = False, truncation = True
+
+                             max_length=512, 
+                             padding = 'max_length',
+                                # truncation = True,
                              )
-    #remove all sample which having more than 1024 tokens
-    # model_inputs = {k: [v for i, v in enumerate(model_inputs[k]) if len(v) < 1024] for k in model_inputs}
+
     # labels = tokenizer(targets, max_length=512, truncation=True, padding = True)
+
     labels = tokenizer(targets,
-                    #    max_length=512, padding = False, truncation = True
+
+                       max_length=512, 
+                       padding = 'max_length',
+                        # truncation = True,
                        )
+
     model_inputs["labels"] = labels["input_ids"]
+
     return model_inputs
 
-tokenized_dataset = train_dataset.map(preprocess_function, batched=True, remove_columns=train_dataset.column_names)
-# tokenizer.padding_side = "right"
-training_params = TrainingArguments(
+tokenizer.padding_side = "right"
+tokenized_dataset = train_dataset.map(preprocess_function, batched=True, batch_size = 8, remove_columns=train_dataset.column_names)
+print(len(tokenized_dataset['input_ids']))
+for i in range(2):
+    print(len(tokenized_dataset['input_ids'][i]))
+    print(len(tokenized_dataset['input_ids'][i+8]))
+
+training_params = SFTConfig(
 
     output_dir="./results",
 
@@ -106,6 +150,7 @@ training_params = TrainingArguments(
     # fp16=True,
 
     bf16 = True,
+    max_seq_length=2048,
     
 
 )
@@ -122,9 +167,10 @@ trainer = SFTTrainer(
 
     peft_config=peft_params,
 
-    # max_seq_length=2048,
+    max_seq_length=2048,
 
     args=training_params,
+    # data_collator=data_collator,
 
     # packing=False,
 

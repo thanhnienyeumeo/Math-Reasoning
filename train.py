@@ -9,7 +9,7 @@ Original file is located at
 
 import os
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments, Trainer, pipeline
+from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments, Trainer, pipeline, BitsAndBytesConfig
 from peft import LoraConfig
 from datasets import Dataset
 import datasets
@@ -21,19 +21,30 @@ from tqdm import tqdm
 import argparse
 
 argparser = argparse.ArgumentParser()
-argparser.add_argument('--model_name', type=str, default='qwen/Qwen2.5-0.5B-Instruct')
-argparser.add_argument('--dataset', type=str, default='gsm8k')
+argparser.add_argument('--model_name', '-m', type=str, default='microsoft/Phi-3.5-mini-instruct')
+argparser.add_argument('--dataset', '-d', type=str, default='metamath')
 argparser.add_argument('--model_path', type=str, default=None)
-argparser.add_argument('--type', type=str, default='qwen')
+argparser.add_argument('--type', type=str, default='phi')
+# argparser.add_argument('--bf16', type=bool, default=False)
+argparser.add_argument('--quant', '-q', type=bool, default=False)
+#rank of lora
+argparser.add_argument('--rank', '-r', type=int, default=256)
 args = argparser.parse_args()
-print(torch.cuda.is_bf16_supported())
+
 model_name = args.model_name
 type = args.type
 # model_name = "bkai-foundation-models/vietnamese-llama2-7b-120GB"
 
+quant_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_quant_type="nf4",
+    bnb_4bit_compute_dtype=getattr(torch, "float16"),
+    bnb_4bit_use_double_quant=False,
+)
 based_model = AutoModelForCausalLM.from_pretrained(model_name,
-  # quantization_config=quant_config,
-  torch_dtype=torch.float32,
+  quantization_config=quant_config if args.quant else None,
+#   torch_dtype=torch.float32,
+torch_dtype=torch.float16,
   device_map={"":0}
 )
 
@@ -45,14 +56,44 @@ peft_params = LoraConfig(
     lora_dropout=0.1,
     bias="none",
     task_type="CAUSAL_LM",
+    target_modules=[
+"q_proj",
+"k_proj",
+"v_proj",
+"o_proj",
+"gate_proj",
+"up_proj",
+"down_proj",
+"lm_head",
+],
 )
+import numpy as np
+# import matplotlib.pyplot as plt
+question='problem'
+answer='solution'
 if args.dataset == 'gsm8k':
-    dataset = datasets.load_dataset("gsm8k", "main")
-
-train_dataset, test_dataset = dataset['train'], dataset['test']
-
-
+    dataset = datasets.load_dataset('gsm8k', "main")
+    train_dataset, test_dataset = dataset['train'], dataset['test']
+    question = 'problem'
+    answer = 'answer'
+elif args.dataset == 'metamath':
+    dataset = datasets.load_dataset("Colder203/meta_math_smaller_than_1024")
+    train_dataset = dataset['train']
+    print(train_dataset)
+    dataset = train_dataset.train_test_split(test_size=0.1)
+    
+    train_dataset = dataset['train']
+    test_dataset = dataset['test']
+    question = 'query'
+    answer = 'response'
+else:
+    dataset = datasets.load_dataset("lighteval/MATH", "all")
+    train_dataset, test_dataset = dataset['train'], dataset['test']
+    question = 'problem'
+    answer = 'solution'
+print('load dataset ok')
 def preprocess_function(examples):
+    
     if type == 'qwen':
         prompt = (
                 "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n"
@@ -65,15 +106,15 @@ def preprocess_function(examples):
                 "<|user|>\n{instruction}\nPut your final answer within \\boxed{{}}\n"
                 "<|assistant|>\n"
             )
-    elìf type == 'llama':
+    elif type == 'llama':
         prompt = (
-                "<s>[INST]"
+                "<s>[INST]")
 
 
-    inputs = [prompt.format(instruction = question) for question in examples["question"]]
-    print(inputs[0])
-    targets = [f"{completion}<|im_end|>\n" for completion in examples["answer"]]
-    print(targets[0])
+    inputs = [prompt.format(instruction = quest) for quest in examples[question]]
+    # print(inputs[0])
+    targets = [f"{completion}<|im_end|>\n" for completion in examples[answer]]
+    # print(targets[0])
     # model_inputs = tokenizer(inputs, max_length=512, truncation=True, padding="max_length")
     model_inputs = tokenizer(inputs,
                             #  max_length=512, padding = True
@@ -92,16 +133,19 @@ tokenized_eval_dataset = test_dataset.map(preprocess_function, batched=True, rem
 # %cd /content/drive/MyDrive/qwen
 
 training_params = TrainingArguments(
-    output_dir="./qwen0.5/results",
+    output_dir=f"./{type}/results",
     num_train_epochs=5,
     per_device_train_batch_size=1,
     gradient_accumulation_steps=1,
     logging_steps=200,
     learning_rate=2e-4,
-    logging_dir="./qwen0.5/logs",
+    logging_dir=f"./{type}/logs",
     save_strategy="epoch",
     # fp32=True,
-    # bf16=True,
+    bf16=torch.cuda.is_bf16_supported(),
+    fp16 = not torch.cuda.is_bf16_supported(),
+    evaluation_strategy="epoch",
+
     
 )
 
@@ -109,8 +153,8 @@ trainer = SFTTrainer(
     model=based_model,
     train_dataset=tokenized_dataset,
     eval_dataset=tokenized_eval_dataset,
-    # peft_config=peft_params, #full finetuning
-    max_seq_length=2048,
+    peft_config=peft_params , #full finetuning
+    # max_seq_length=2048,
     args=training_params,
     packing=False,
     tokenizer = tokenizer,
