@@ -45,7 +45,8 @@ based_model = AutoModelForCausalLM.from_pretrained(model_name,
   quantization_config=quant_config if args.quant else None,
 #   torch_dtype=torch.float32,
 torch_dtype=torch.float16,
-  device_map={"":0}
+#   device_map={"":0}
+device_map={'': torch.cuda.current_device()}
 )
 
 tokenizer = AutoTokenizer.from_pretrained(model_name)
