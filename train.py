@@ -51,7 +51,7 @@ torch_dtype=torch.float16,
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 
 peft_params = LoraConfig(
-    r=256,
+    r= args.rank,
     lora_alpha=16,
     lora_dropout=0.1,
     bias="none",
@@ -77,7 +77,7 @@ if args.dataset == 'gsm8k':
     question = 'problem'
     answer = 'answer'
 elif args.dataset == 'metamath':
-    dataset = datasets.load_dataset("Colder203/meta_math_smaller_than_1024")
+    dataset = datasets.load_dataset("Colder203/meta_math_smaller_than_512")
     train_dataset = dataset['train']
     print(train_dataset)
     dataset = train_dataset.train_test_split(test_size=0.1)
@@ -140,7 +140,8 @@ training_params = TrainingArguments(
     logging_steps=200,
     learning_rate=2e-4,
     logging_dir=f"./{type}/logs",
-    save_strategy="epoch",
+    save_strategy="steps",
+    save_steps=120000,
     # fp32=True,
     bf16=torch.cuda.is_bf16_supported(),
     fp16 = not torch.cuda.is_bf16_supported(),

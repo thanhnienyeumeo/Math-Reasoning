@@ -48,26 +48,26 @@ peft_params = LoraConfig(
 )
 
 
-# metaMath = datasets.load_dataset("meta-math/MetaMathQA")
-# metaMath_list = metaMath['train'].to_list()
+metaMath = datasets.load_dataset("meta-math/MetaMathQA")
+metaMath_list = metaMath['train'].to_list()
 
-# filter_list = []
-# print('Remove examples with length > 1023...........')
-# for i in tqdm(range(len(metaMath_list))):
-#     query = metaMath_list[i]['query']
-#     query_tokens = tokenizer(query, return_tensors='pt')
-#     answer = metaMath_list[i]['response']
-#     answer_tokens = tokenizer(answer, return_tensors='pt')
-#     if len(query_tokens['input_ids'][0]) > 1023 or len(answer_tokens['input_ids'][0]) > 1023:
-#         # print(i)
-#         continue
-#     filter_list.append(metaMath_list[i])
-#     # if i  > 20: break
-# train_dataset = Dataset.from_list(filter_list)
-# #save train_dataset to file
-# train_dataset.push_to_hub("Colder203/meta_math_smaller_than_1024")
-# print('number of removed examples:', len(metaMath_list) - len(filter_list))
-# exit()
+filter_list = []
+print('Remove examples with length > 512...........')
+for i in tqdm(range(len(metaMath_list))):
+    query = metaMath_list[i]['query']
+    query_tokens = tokenizer(query, return_tensors='pt')
+    answer = metaMath_list[i]['response']
+    answer_tokens = tokenizer(answer, return_tensors='pt')
+    if len(query_tokens['input_ids'][0]) > 512 or len(answer_tokens['input_ids'][0]) > 512:
+        # print(i)
+        continue
+    filter_list.append(metaMath_list[i])
+    # if i  > 20: break
+train_dataset = Dataset.from_list(filter_list)
+#save train_dataset to file
+train_dataset.push_to_hub("Colder203/meta_math_smaller_than_512")
+print('number of removed examples:', len(metaMath_list) - len(filter_list))
+exit()
 from transformers import DataCollatorWithPadding
 
 # Khởi tạo DataCollator
