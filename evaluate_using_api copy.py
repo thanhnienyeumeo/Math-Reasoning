@@ -8,7 +8,8 @@ from trl import SFTTrainer, PPOTrainer
 
 from tqdm import tqdm
 import argparse
-
+from credential import GROQ_API_KEY
+from copy import deepcopy
 
 argparser = argparse.ArgumentParser()
 argparser.add_argument('--model_name', type=str, default='qwen/Qwen2.5-1.5B-Instruct')
@@ -46,7 +47,7 @@ import time
 from groq import Groq
 
 client = Groq(
-    api_key='' #get tokenn from groq
+    api_key= GROQ_API_KEY #get tokenn from groq
 )
 
 def generate_answer_groq(prompt):

@@ -8,3 +8,5 @@ checkpoint
 trash.py
 ./results/
 results
+credential.py
+*.json

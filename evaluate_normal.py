@@ -10,17 +10,19 @@ from tqdm import tqdm
 import argparse
 from copy import deepcopy
 import json
-
+from credential import GROQ_API_KEY
 argparser = argparse.ArgumentParser()
 argparser.add_argument('--model_name', type=str, default='qwen/Qwen2.5-1.5B-Instruct')
 argparser.add_argument('--dataset', type=str, default='gsm8k')
-argparser.add_argument('--model_path', type=str, default='checkpoint/qwen1.5_checkpoint')
+argparser.add_argument('--model_path', type=str, default= None)
 argparser.add_argument('--type', type=str, default='qwen')
 args = argparser.parse_args()
 
 
 model_name = args.model_name
 model_path = args.model_path
+if model_path is None:
+    model_path = model_name
 model = AutoModelForCausalLM.from_pretrained(model_path,
                                             low_cpu_mem_usage=True,
     # torch_dtype=torch.float16,
@@ -53,7 +55,7 @@ import time
 from groq import Groq
 
 client = Groq(
-    api_key='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' #get tokenn from groq
+    api_key=GROQ_API_KEY #get tokenn from groq
 )
 
 def generate_answer_groq(prompt):
@@ -109,8 +111,9 @@ for question, answer in test_dataset:
         true_ans = test_dataset[answer][i]
         true_ans = true_ans[true_ans.rindex(r'####') + 4:].strip()
         all_true_ans.append(true_ans)
-        if "The answer is" in ans or "the answer is" in ans:
-            ans = ans[ans.index("The answer is") + len("The answer is:"):]
+        ans = ans.lower()
+        if "the answer is" in ans:
+            ans = ans[ans.index("the answer is") + len("the answer is:"):]
             if '<|endoftext|>' in ans or '<|im_end|>' in ans:
                 ans = ans[:ans.index('<')]
             ans = ans.strip()
