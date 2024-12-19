@@ -5,3 +5,6 @@
 *.log
 pycache/
 checkpoint
+trash.py
+./results/
+results

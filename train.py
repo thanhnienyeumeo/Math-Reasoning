@@ -28,10 +28,11 @@ argparser.add_argument('--type', type=str, default='phi')
 # argparser.add_argument('--bf16', type=bool, default=False)
 argparser.add_argument('--quant', '-q', type=bool, default=False)
 #rank of lora
-argparser.add_argument('--rank', '-r', type=int, default=256)
+argparser.add_argument('--rank', '-r', type=int, default=64)
 args = argparser.parse_args()
 
 model_name = args.model_name
+model_path = args.model_path
 type = args.type
 # model_name = "bkai-foundation-models/vietnamese-llama2-7b-120GB"
 
@@ -41,13 +42,30 @@ quant_config = BitsAndBytesConfig(
     bnb_4bit_compute_dtype=getattr(torch, "float16"),
     bnb_4bit_use_double_quant=False,
 )
-based_model = AutoModelForCausalLM.from_pretrained(model_name,
-  quantization_config=quant_config if args.quant else None,
-#   torch_dtype=torch.float32,
-torch_dtype=torch.float16,
-#   device_map={"":0}
-device_map={'': torch.cuda.current_device()}
-)
+if model_path is not None:
+    based_model = AutoModelForCausalLM.from_pretrained(model_path,
+    quantization_config=quant_config if args.quant else None,
+    torch_dtype=torch.float16,
+    device_map={'': torch.cuda.current_device()}
+    )
+    # Nếu checkpoint có chứa optimizer state
+    # optimizer = AdamW(based_model.parameters(), lr=2e-4)
+    # checkpoint = torch.load(f"{checkpoint_path}/optimizer.pt")
+    # optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+    # optimizer = optimizer.to("cuda")
+
+    # scheduler = checkpoint.get("scheduler_state_dict", None)
+    # if scheduler:
+    #     scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+# Nếu bạn dùng learning rate scheduler
+else:
+    based_model = AutoModelForCausalLM.from_pretrained(model_name,
+    quantization_config=quant_config if args.quant else None,
+    #   torch_dtype=torch.float32,
+    torch_dtype=torch.float16,
+    #   device_map={"":0}
+    device_map={'': torch.cuda.current_device()}
+    )
 
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 
@@ -142,7 +160,7 @@ training_params = TrainingArguments(
     learning_rate=2e-4,
     logging_dir=f"./{type}/logs",
     save_strategy="steps",
-    save_steps=120000,
+    save_steps=60000,
     # fp32=True,
     bf16=torch.cuda.is_bf16_supported(),
     fp16 = not torch.cuda.is_bf16_supported(),
@@ -160,6 +178,7 @@ trainer = SFTTrainer(
     args=training_params,
     packing=False,
     tokenizer = tokenizer,
+    # optimizers=(optimizer, scheduler) if model_path is not None else None,
     # overlap_comm = False 
 )
 
@@ -168,8 +187,10 @@ import os
 os.environ["WANDB_DISABLED"] = "true"
 
 # trainer.train() #This is 0.5B
-
-trainer.train() #This is 1.5B
+if args.model_path is not None:
+    trainer.train(resume_from_checkpoint=args.model_path)
+else:
+    trainer.train() #This is 1.5B
 
 trainer.save_model(model_name)
 

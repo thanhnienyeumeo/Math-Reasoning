@@ -13,7 +13,7 @@ import argparse
 argparser = argparse.ArgumentParser()
 argparser.add_argument('--model_name', type=str, default='qwen/Qwen2.5-1.5B-Instruct')
 argparser.add_argument('--dataset', type=str, default='gsm8k')
-argparser.add_argument('--model_path', type=str, default='qwen1.5_checkpoint')
+argparser.add_argument('--model_path', type=str, default='checkpoint/qwen1.5_checkpoint')
 args = argparser.parse_args()
 
 
@@ -46,7 +46,7 @@ import time
 from groq import Groq
 
 client = Groq(
-    api_key='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' #get tokenn from groq
+    api_key='' #get tokenn from groq
 )
 
 def generate_answer_groq(prompt):

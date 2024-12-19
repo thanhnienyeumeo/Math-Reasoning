@@ -1,0 +1,52 @@
+{
+  "os":  "Linux-5.15.0-126-generic-x86_64-with-glibc2.35",
+  "python":  "CPython 3.13.1",
+  "startedAt":  "2024-12-19T02:30:57.319006Z",
+  "args":  [
+    "--type",
+    "qwen",
+    "--model_name",
+    "Qwen/Qwen2.5-1.5B-Instruct",
+    "-r",
+    "64",
+    "--model_path",
+    "qwen/results/checkpoint-120000"
+  ],
+  "program":  "/home/intern/hoang/qwen_finetune/Math-Reasoning/train.py",
+  "codePath":  "train.py",
+  "git":  {
+    "remote":  "https://github.com/thanhnienyeumeo/Math-Reasoning.git",
+    "commit":  "ee544b6152c35788c21c6edac19036aae31bfd60"
+  },
+  "email":  "nguyenlonx@gmail.com",
+  "root":  "/home/intern/hoang/qwen_finetune/Math-Reasoning",
+  "host":  "BDI-KIETBS-D1",
+  "executable":  "/home/intern/miniconda3/envs/Tam/bin/python",
+  "codePathLocal":  "train.py",
+  "cpu_count":  8,
+  "cpu_count_logical":  8,
+  "gpu":  "NVIDIA GeForce RTX 3060",
+  "gpu_count":  1,
+  "disk":  {
+    "/":  {
+      "total":  "982820896768",
+      "used":  "166581710848"
+    }
+  },
+  "memory":  {
+    "total":  "67324297216"
+  },
+  "cpu":  {
+    "count":  8,
+    "countLogical":  8
+  },
+  "gpu_nvidia":  [
+    {
+      "name":  "NVIDIA GeForce RTX 3060",
+      "memoryTotal":  "12884901888",
+      "cudaCores":  3584,
+      "architecture":  "Ampere"
+    }
+  ],
+  "cudaVersion":  "12.4"
+}
