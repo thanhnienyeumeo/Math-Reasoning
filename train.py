@@ -14,7 +14,7 @@ from peft import LoraConfig
 from datasets import Dataset
 import datasets
 from trl import SFTTrainer, PPOTrainer
-
+from format import prompt_phi, prompt_qwen, prompt_llama
 from tqdm import tqdm
 #load model name
 # model_name = "qwen/Qwen2.5-0.5B"
@@ -29,6 +29,10 @@ argparser.add_argument('--type', type=str, default='phi')
 argparser.add_argument('--quant', '-q', type=bool, default=False)
 #rank of lora
 argparser.add_argument('--rank', '-r', type=int, default=64)
+argparser.add_argument('--num_samples', '-n', type=int, default=None)
+argparser.add_argument('--save_path', type=str, default=None)
+argparser.add_argument('--save_strategy', '-s', type=str, default='epoch')
+argparser.add_argument('--save_steps', '-ss', type=int, default=60000)
 args = argparser.parse_args()
 
 model_name = args.model_name
@@ -90,6 +94,11 @@ import numpy as np
 # import matplotlib.pyplot as plt
 question='problem'
 answer='solution'
+suffix = "<|im_end|>"
+if type == 'llama':
+    suffix = "<|eot_id|>"
+elif type == 'phi':
+        suffix = "<|endoftext|>"
 if args.dataset == 'gsm8k':
     dataset = datasets.load_dataset('gsm8k', "main")
     train_dataset, test_dataset = dataset['train'], dataset['test']
@@ -98,6 +107,8 @@ if args.dataset == 'gsm8k':
 elif args.dataset == 'metamath':
     dataset = datasets.load_dataset("Colder203/meta_math_smaller_than_512")
     train_dataset = dataset['train']
+    if args.num_samples is not None:
+        train_dataset = train_dataset.select(np.random.choice(len(train_dataset), args.num_samples))
     print(train_dataset)
     dataset = train_dataset.train_test_split(test_size=0.1)
     
@@ -114,25 +125,18 @@ print('load dataset ok')
 def preprocess_function(examples):
     
     if type == 'qwen':
-        prompt = (
-                "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n"
-                "<|im_start|>user\n{instruction}\nPut your final answer within \\boxed{{}}.<|im_end|>\n"
-                "<|im_start|>assistant\n"
-            )
+        prompt = prompt_qwen
     elif type == 'phi':
-        prompt = (
-                "<|system|>\nYou are a helpful assistant.\n"
-                "<|user|>\n{instruction}\nPut your final answer within \\boxed{{}}\n"
-                "<|assistant|>\n"
-            )
+        prompt = prompt_phi
+            
     elif type == 'llama':
-        prompt = (
-                "<s>[INST]")
+        prompt = prompt_llama
 
 
     inputs = [prompt.format(instruction = quest) for quest in examples[question]]
     # print(inputs[0])
-    targets = [f"{completion}<|im_end|>\n" for completion in examples[answer]]
+    
+    targets = [f"{completion}" + suffix for completion in examples[answer]]
     # print(targets[0])
     # model_inputs = tokenizer(inputs, max_length=512, truncation=True, padding="max_length")
     model_inputs = tokenizer(inputs,
@@ -152,15 +156,15 @@ tokenized_eval_dataset = test_dataset.map(preprocess_function, batched=True, rem
 # %cd /content/drive/MyDrive/qwen
 
 training_params = TrainingArguments(
-    output_dir=f"./{type}/results",
+    output_dir=f"./{type}/results" if args.save_path is None else args.save_path,
     num_train_epochs=5,
     per_device_train_batch_size=1,
     gradient_accumulation_steps=1,
     logging_steps=200,
     learning_rate=2e-4,
     logging_dir=f"./{type}/logs",
-    save_strategy="steps",
-    save_steps=60000,
+    save_strategy="epoch" if args.save_strategy == 'epoch' else "steps",
+    save_steps=60000 if args.save_steps is None else args.save_steps,
     # fp32=True,
     bf16=torch.cuda.is_bf16_supported(),
     fp16 = not torch.cuda.is_bf16_supported(),
@@ -183,8 +187,7 @@ trainer = SFTTrainer(
 )
 
 #turn off wandb
-import os
-os.environ["WANDB_DISABLED"] = "true"
+trainer.is_wandb_on = False
 
 # trainer.train() #This is 0.5B
 if args.model_path is not None:
@@ -193,16 +196,3 @@ else:
     trainer.train() #This is 1.5B
 
 trainer.save_model(model_name)
-
-
-based_model
-
-### in ra output tu 1 prompt
-prompt = '''<|im_start|>user
-Jen buys and sells candy bars. She buys candy bars for 80 cents each and sells them for a dollar each. If she buys 50 candy bars and sells 48 of them, how much profit does she make in cents?<|im_end|>
-
-<|im_start|>assistant'''
-output = based_model.generate(tokenizer(prompt, return_tensors='pt').input_ids.to('cuda'), early_stopping=True)
-
-
-print(tokenizer.decode(output[0]))
