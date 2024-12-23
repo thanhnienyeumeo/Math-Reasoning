@@ -1,6 +1,5 @@
 datasets==3.1.0
 groq==0.13.1
-numpy==2.2.1
 peft==0.14.0
 # torch==2.4.1+cu124
 tqdm==4.67.1
