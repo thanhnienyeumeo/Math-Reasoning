@@ -27,7 +27,6 @@ model = AutoModelForCausalLM.from_pretrained(model_path,
                                             low_cpu_mem_usage=True,
     # torch_dtype=torch.float16,
     # quantization_config=quant_config,
-    # torch_dtype=torch.float16,
     device_map={"":0}
 )
 
@@ -49,7 +48,7 @@ cnt = 0
 all_ans = []
 all_true_ans = []
 wrong_ans = []
-#save all_ans and all_true_ans to file
+
 import os
 import time
 from groq import Groq
@@ -66,7 +65,7 @@ def generate_answer_groq(prompt):
                 "content": prompt,
             }
         ],
-        model="llama-3.3-70b-versatile",
+        model="llama3-70b-8192",
         temperature=0,
         max_tokens=2048,
     )
@@ -75,17 +74,21 @@ def generate_answer_groq(prompt):
 
 prefix_prompt = '''Your task is to evaluate a generated answer from a model by comparing it with a correct reference answer. Determine if the generated answer matches the correct answer. If the generated answer is correct, respond with 1. If it is incorrect, respond with 0. Do not provide any other responses besides 1 or 0.'''
 
-def generate_prompt(question, answer, i):
+def generate_prompt(question, answer, i, pred = None):
         input = f'''<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n{question}\nPut your final answer within \\boxed{{}}.<|im_end|>\n<|im_start|>assistant\n'''
+        answer_model = ''
+        if pred is not None:
+            answer_model = pred
+            return f'''{prefix_prompt}\n\ntrue answer: {answer}\n\ngenerated answer: {answer_model}''', pred
         output = model.generate(tokenizer(input, 
         return_tensors='pt').input_ids.to('cuda'), 
         max_new_tokens = 2048,
-        eos_token_id = tokenizer("<|im_end|>")['input_ids'],
+        eos_token_id = tokenizer("<|im_end|>")['input_ids'] if args.type == 'qwen' else tokenizer.eos_token_id,
         temperature = 0.2
         )
-        answer_ = tokenizer.decode(output[0])
+        answer_ = tokenizer.decode(output[0]) #ori_ans
         # print(answer_model)
-        answer_model = ''
+        
         try:
             answer_model = answer_.split("assistant")[2]
         except:
@@ -95,16 +98,32 @@ def generate_prompt(question, answer, i):
         return f'''{prefix_prompt}\n\ntrue answer: {answer}\n\ngenerated answer: {answer_model}''', answer_
 
 cnt_not_format = 0
+# output = pipeline('text-generation', model=model, tokenizer=tokenizer)
+# ans = output(prompt.format(question = question), max_length=512)
 for question, answer in test_dataset:
     for i in tqdm(range(len(test_dataset))):
     # for i in tqdm(range(22,40)):
-
+        if i > 0 and i % 100 == 0:
+          print(f'Current accuracy at data {i} is: ', cnt / i)
+          with open('all_ans.json', 'w') as f:
+              json.dump(all_ans, f)
+          with open('all_true_ans.json', 'w') as f:
+              json.dump(all_true_ans, f)
+          with open('wrong_ans.json', 'w') as f:
+              json.dump(wrong_ans, f)
         input = prompt.format(instruction = test_dataset[question][i])
         # print(input)
-        output = model.generate(tokenizer(input, return_tensors='pt').input_ids.to('cuda'), early_stopping=True, max_new_tokens=1024, eos_token_id = tokenizer("<|im_end|>")['input_ids'], temperature = 0.2)
+        output = model.generate(tokenizer(input, return_tensors='pt').input_ids.to('cuda'), early_stopping=True, max_new_tokens=1024, eos_token_id = tokenizer.eos_token_id, temperature = 0.2)
         
         ori_ans = tokenizer.decode(output[0])
-        ori_ans = ori_ans[ori_ans.index('<|im_start|>assistant\n'):]
+        # ori_ans = output(input, max_length=1024)[0]['generated_text']
+        # print(ori_ans)
+        if args.type == 'qwen':
+            ori_ans = ori_ans[ori_ans.index('<|im_start|>assistant\n'):]
+        elif args.type == 'phi':
+            ori_ans = ori_ans[ori_ans.index('<|assistant|>\n'):]
+        else:
+            ori_ans = ori_ans[ori_ans.index('assistant<|end_header_id|>'):] 
         # print(ori_ans)
         ans = deepcopy(ori_ans)
         all_ans.append(ori_ans)
@@ -112,35 +131,41 @@ for question, answer in test_dataset:
         true_ans = true_ans[true_ans.rindex(r'####') + 4:].strip()
         all_true_ans.append(true_ans)
         ans = ans.lower()
-        if "the answer is" in ans:
-            ans = ans[ans.index("the answer is") + len("the answer is:"):]
-            if '<|endoftext|>' in ans or '<|im_end|>' in ans:
-                ans = ans[:ans.index('<')]
-            ans = ans.strip()
-        else:
-            try:
+
+        try:
                 ans = ans[ans.rindex(r'\boxed{') + 7:ans.rindex('}')]
                 if ans == '':
                     print('not having answer')
-                    wrong_ans.append(ans)
+                    wrong_ans.append(ori_ans)
                     print(ori_ans)
                     continue
-            except:
-                print('not format. Evaluating using groq....')
-                print(ans)
-                prompt2, _ = generate_prompt(test_dataset[question][i], test_dataset[answer][i],i)
-                score = generate_answer_groq(prompt2)
-                if score == 1 or score == '1':
-                    cnt += 1
-                elif score == 0 or score == '0':
-                    wrong_ans.append(str(i) + ': ' + ans + ' | ' + test_dataset[answer][i])
-                    
+        except:
+                if "the answer is" in ans:
+                    ans = ans[ans.index("the answer is") + len("the answer is:"):]
+                    if '<|endoftext|>' in ans or '<|im_end|>' in ans or '<|end_header_id|>' in ans:
+                        ans = ans[:ans.index('<')]
+                    ans = ans.strip()
+                elif "the final answer is" in ans:
+                    ans = ans[ans.index("the final answer is") + len("the final answer is:"):]
+                    if '<|endoftext|>' in ans or '<|im_end|>' in ans or '<|eot_id|>' in ans:
+                        ans = ans[:ans.index('<')]
+                    ans = ans.strip()
                 else:
-                    print('Error: ', score)
-                    
-                    # raise ValueError('Error: ', score)
-                cnt_not_format +=1 
-                continue
+                    print('not format. Evaluating using groq....')
+                    print(ans)
+                    prompt2, _ = generate_prompt(test_dataset[question][i], test_dataset[answer][i],i, pred = ori_ans)
+                    score = generate_answer_groq(prompt2)
+                    if score == 1 or score == '1':
+                        cnt += 1
+                    elif score == 0 or score == '0':
+                        wrong_ans.append(str(i) + ': ' + ans + ' | \n' + test_dataset[answer][i])
+                        
+                    else:
+                        print('Error: ', score)
+                        
+                        # raise ValueError('Error: ', score)
+                    cnt_not_format +=1 
+                    continue
         
         
         
@@ -148,19 +173,24 @@ for question, answer in test_dataset:
             cnt += 1
         else:
             wrong_ans.append(str(i) + ': ' + ans + ' | ' + true_ans)
+        if i == 1: 
+            print(cnt)
         
-        if i % 100 == 0 or i == len(test_dataset) -1: 
-          print('Current accuracy is: ', cnt/(i+1))
-          with open('all_ans.json', 'w') as f:
-              json.dump(all_ans, f)
-          with open('all_true_ans.json', 'w') as f:
-              json.dump(all_true_ans, f)
-          with open('wrong_ans.json', 'w') as f:
-                json.dump(wrong_ans, f)
+          
         
     break
 
 
+
+
 print("Accuracy: ", cnt/len(test_dataset))
-print("Number of    not format: ", cnt_not_format)
-        
+print("Number of not format: ", cnt_not_format)
+print('Saving..........')
+with open('all_ans.json', 'w') as f:
+    json.dump(all_ans, f)
+with open('all_true_ans.json', 'w') as f:
+    json.dump(all_true_ans, f)
+with open('wrong_ans.json', 'w') as f:
+    json.dump(wrong_ans, f)
+
+print('Saving completed.')

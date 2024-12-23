@@ -8,4 +8,8 @@ prompt_phi = '''<|system|>\nYou are a helpful assistant.
 {instruction}
 Put your final answer within \\boxed{{}}
 <|assistant|>\n'''
-prompt_llama = "" #not implemented yet
+prompt_llama = '''<|begin_of_text|><|start_header_id|>system<|end_header_id|>
+You are a helpful AI assistant<|eot_id|>
+<|start_header_id|>user<|end_header_id|>
+{instruction}<|eot_id|>
+<|start_header_id|>assistant<|end_header_id|>\n'''

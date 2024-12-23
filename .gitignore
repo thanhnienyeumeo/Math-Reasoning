@@ -10,3 +10,5 @@ trash.py
 results
 credential.py
 *.json
+__pycache__/
+wandb/

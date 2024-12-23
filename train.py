@@ -39,7 +39,8 @@ model_name = args.model_name
 model_path = args.model_path
 type = args.type
 # model_name = "bkai-foundation-models/vietnamese-llama2-7b-120GB"
-
+compute_dtype = torch.bfloat16
+attn_implementation = "flash_attention_2"
 quant_config = BitsAndBytesConfig(
     load_in_4bit=True,
     bnb_4bit_quant_type="nf4",
@@ -49,8 +50,10 @@ quant_config = BitsAndBytesConfig(
 if model_path is not None:
     based_model = AutoModelForCausalLM.from_pretrained(model_path,
     quantization_config=quant_config if args.quant else None,
-    torch_dtype=torch.float16,
-    device_map={'': torch.cuda.current_device()}
+    # torch_dtype=torch.float16,
+    torch_dtype= compute_dtype,
+    device_map={'': torch.cuda.current_device()},
+    attn_implementation=attn_implementation
     )
     # Nếu checkpoint có chứa optimizer state
     # optimizer = AdamW(based_model.parameters(), lr=2e-4)
@@ -66,9 +69,11 @@ else:
     based_model = AutoModelForCausalLM.from_pretrained(model_name,
     quantization_config=quant_config if args.quant else None,
     #   torch_dtype=torch.float32,
-    torch_dtype=torch.float16,
+    # torch_dtype=torch.float16,
+    torch_dtype= compute_dtype,
     #   device_map={"":0}
-    device_map={'': torch.cuda.current_device()}
+    device_map={'': torch.cuda.current_device()},
+    attn_implementation=attn_implementation
     )
 
 tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -79,16 +84,16 @@ peft_params = LoraConfig(
     lora_dropout=0.1,
     bias="none",
     task_type="CAUSAL_LM",
-    target_modules=[
-"q_proj",
-"k_proj",
-"v_proj",
-"o_proj",
-"gate_proj",
-"up_proj",
-"down_proj",
-"lm_head",
-],
+#     target_modules=[
+# "q_proj",
+# "k_proj",
+# "v_proj",
+# "o_proj",
+# "gate_proj",
+# "up_proj",
+# "down_proj",
+# "lm_head",
+# ] if type == 'phi' else None
 )
 import numpy as np
 # import matplotlib.pyplot as plt
@@ -140,15 +145,21 @@ def preprocess_function(examples):
     # print(targets[0])
     # model_inputs = tokenizer(inputs, max_length=512, truncation=True, padding="max_length")
     model_inputs = tokenizer(inputs,
-                            #  max_length=512, padding = True
+                             max_length=512, padding = True,
+                             truncation=True
                              )
     # labels = tokenizer(targets, max_length=512, truncation=True, padding = True)
     labels = tokenizer(targets,
-                      #  max_length=512, padding = True
+                       max_length=512, padding = True,
+                       truncation=True
                        )
     model_inputs["labels"] = labels["input_ids"]
     return model_inputs
 
+# print(tokenizer('|finetune_right_pad_id|>'))
+tokenizer.truncation_side = "left"
+tokenizer.padding_side = "left"
+tokenizer.pad_token = tokenizer.eos_token
 tokenized_dataset = train_dataset.map(preprocess_function, batched=True, remove_columns=train_dataset.column_names)
 
 tokenized_eval_dataset = test_dataset.map(preprocess_function, batched=True, remove_columns=test_dataset.column_names)
@@ -164,12 +175,12 @@ training_params = TrainingArguments(
     learning_rate=2e-4,
     logging_dir=f"./{type}/logs",
     save_strategy="epoch" if args.save_strategy == 'epoch' else "steps",
-    save_steps=60000 if args.save_steps is None else args.save_steps,
+    save_steps=6000 if args.save_steps is None else args.save_steps,
     # fp32=True,
     bf16=torch.cuda.is_bf16_supported(),
     fp16 = not torch.cuda.is_bf16_supported(),
     evaluation_strategy="epoch",
-
+    report_to = "none"
     
 )
 
@@ -181,13 +192,15 @@ trainer = SFTTrainer(
     # max_seq_length=2048,
     args=training_params,
     packing=False,
-    tokenizer = tokenizer,
+    # tokenizer = tokenizer,
     # optimizers=(optimizer, scheduler) if model_path is not None else None,
-    # overlap_comm = False 
+    # overlap_comm = False ,
+    
 )
 
 #turn off wandb
-trainer.is_wandb_on = False
+# import os
+# os.environ["WANDB_DISABLED"] = 'true'
 
 # trainer.train() #This is 0.5B
 if args.model_path is not None:
