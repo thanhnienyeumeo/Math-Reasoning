@@ -16,6 +16,12 @@ import datasets
 from trl import SFTTrainer, PPOTrainer
 from format import prompt_phi, prompt_qwen, prompt_llama
 from tqdm import tqdm
+import transformers
+from typing import Optional, Dict, Sequence
+import copy
+import logging
+import random
+from dataclasses import dataclass, field
 #load model name
 # model_name = "qwen/Qwen2.5-0.5B"
 import argparse
@@ -35,6 +41,8 @@ argparser.add_argument('--save_strategy', '-s', type=str, default='epoch')
 argparser.add_argument('--save_steps', '-ss', type=int, default=60000)
 argparser.add_argument('--max_length', '-ml', type=int, default=512)
 argparser.add_argument('--padding', '-p', type=str, default= 'do_not_pad' )
+argparser.add_argument('--attn', '-a', type=str, default= None)
+argparser.add_argument('--batch_size', '-b', type=int, default= 1)
 args = argparser.parse_args()
 
 model_name = args.model_name
@@ -42,7 +50,7 @@ model_path = args.model_path
 type = args.type
 # model_name = "bkai-foundation-models/vietnamese-llama2-7b-120GB"
 compute_dtype = torch.bfloat16
-attn_implementation = "flash_attention_2"
+attn_implementation = args.attn #"flash_attention_2"
 quant_config = BitsAndBytesConfig(
     load_in_4bit=True,
     bnb_4bit_quant_type="nf4",
@@ -53,7 +61,7 @@ if model_path is not None:
     based_model = AutoModelForCausalLM.from_pretrained(model_path,
     quantization_config=quant_config if args.quant else None,
     # torch_dtype=torch.float16,
-    torch_dtype= compute_dtype,
+    torch_dtype= compute_dtype if torch.cuda.is_bf16_supported() else torch.float16,
     device_map={'': torch.cuda.current_device()},
     attn_implementation=attn_implementation
     )
@@ -72,7 +80,7 @@ else:
     quantization_config=quant_config if args.quant else None,
     #   torch_dtype=torch.float32,
     # torch_dtype=torch.float16,
-    torch_dtype= compute_dtype,
+    torch_dtype= compute_dtype if torch.cuda.is_bf16_supported() else torch.float16,
     #   device_map={"":0}
     device_map={'': torch.cuda.current_device()},
     attn_implementation=attn_implementation
@@ -97,6 +105,7 @@ peft_params = LoraConfig(
 # "lm_head",
 # ] if type == 'phi' else None
 )
+
 import numpy as np
 # import matplotlib.pyplot as plt
 question='problem'
@@ -112,8 +121,11 @@ if args.dataset == 'gsm8k':
     question = 'problem'
     answer = 'answer'
 elif args.dataset == 'metamath':
-    dataset = datasets.load_dataset("Colder203/meta_math_smaller_than_512")
+    dataset = datasets.load_dataset("Colder203/meta_math_smaller_than_1024")
+    #choose only type=='gsm_ansaug'
     train_dataset = dataset['train']
+    train_dataset = train_dataset.filter(lambda x: x['type'].lower() == 'gsm_ansaug')
+    
     if args.num_samples is not None:
         train_dataset = train_dataset.select(np.random.choice(len(train_dataset), args.num_samples))
     print(train_dataset)
@@ -131,6 +143,69 @@ else:
 print('load dataset ok')
 def preprocess_function(examples):
     
+    
+    # print(targets[0])
+    # model_inputs = tokenizer(inputs, max_length=512, truncation=True, padding="max_length")
+    model_inputs = tokenizer(inputs,
+                            #  max_length=args.max_length, padding = args.padding,
+                            #  max_length=512, 
+                            padding = 'longest',
+                            # return_tensors="pt"
+                            #  truncation='longest'
+                             )
+    # labels = tokenizer(targets, max_length=512, truncation=True, padding = True)
+    labels = tokenizer(targets,
+                        #   max_length=args.max_length, padding = args.padding,
+                    #    max_length=512, 
+                    padding = 'longest',
+                    # return_tensors="pt"
+                    #    truncation=True
+                       )
+    model_inputs['input_ids'], labels['input_ids'] = model_inputs['input_ids'] + labels['input_ids'], [-100] * len(model_inputs['input_ids']) + labels['input_ids']
+    print(len(model_inputs['input_ids']))
+    print(len(labels['input_ids']))
+    model_inputs["labels"] = labels["input_ids"]
+    
+    return model_inputs
+def _tokenize_fn(strings: Sequence[str], tokenizer: transformers.PreTrainedTokenizer) -> Dict:
+    """Tokenize a list of strings."""
+    tokenized_list = [
+        tokenizer(
+            text,
+            return_tensors="pt",
+            padding="longest",
+            max_length=tokenizer.model_max_length,
+            truncation=False,
+        )
+        for text in strings
+    ]
+    input_ids = labels = [tokenized.input_ids[0] for tokenized in tokenized_list]
+    input_ids_lens = labels_lens = [
+        tokenized.input_ids.ne(tokenizer.pad_token_id).sum().item() for tokenized in tokenized_list
+    ]
+    return dict(
+        input_ids=input_ids,
+        labels=labels,
+        input_ids_lens=input_ids_lens,
+        labels_lens=labels_lens,
+    )
+
+
+def preprocess(
+    sources: Sequence[str],
+    targets: Sequence[str],
+    tokenizer: transformers.PreTrainedTokenizer,
+) -> Dict:
+    """Preprocess the data by tokenizing."""
+    examples = [s + t for s, t in zip(sources, targets)]
+    examples_tokenized, sources_tokenized = [_tokenize_fn(strings, tokenizer) for strings in (examples, sources)]
+    input_ids = examples_tokenized["input_ids"]
+    labels = copy.deepcopy(input_ids)
+    for label, source_len in zip(labels, sources_tokenized["input_ids_lens"]):
+        label[:source_len] = IGNORE_INDEX
+    return dict(input_ids=input_ids, labels=labels)
+
+def train_tokenize_function(examples, tokenizer):
     if type == 'qwen':
         prompt = prompt_qwen
     elif type == 'phi':
@@ -140,41 +215,66 @@ def preprocess_function(examples):
         prompt = prompt_llama
 
 
-    inputs = [prompt.format(instruction = quest) for quest in examples[question]]
+    sources = [prompt.format(instruction = quest) for quest in examples[question]]
     # print(inputs[0])
     
     targets = [f"{completion}" + suffix for completion in examples[answer]]
-    # print(targets[0])
-    # model_inputs = tokenizer(inputs, max_length=512, truncation=True, padding="max_length")
-    model_inputs = tokenizer(inputs,
-                             max_length=args.max_length, padding = args.padding,
-                            #  max_length=512, padding = True,
-                            #  truncation=True
-                             )
-    # labels = tokenizer(targets, max_length=512, truncation=True, padding = True)
-    labels = tokenizer(targets,
-                          max_length=args.max_length, padding = args.padding,
-                    #    max_length=512, padding = True,
-                    #    truncation=True
-                       )
-    model_inputs["labels"] = labels["input_ids"]
-    return model_inputs
+    
 
-# print(tokenizer('|finetune_right_pad_id|>'))
+    data_dict = preprocess(sources, targets, tokenizer)
+    return data_dict
+
+IGNORE_INDEX = -100
+@dataclass
+class DataCollatorForSupervisedDataset(object):
+    """Collate examples for supervised fine-tuning."""
+
+    tokenizer: transformers.PreTrainedTokenizer
+
+    def __call__(self, instances: Sequence[Dict]) -> Dict[str, torch.Tensor]:
+        input_ids, labels = tuple([instance[key] for instance in instances] for key in ("input_ids", "labels"))
+        input_ids = [torch.tensor(x) for x in input_ids]
+        input_ids = torch.nn.utils.rnn.pad_sequence(
+            input_ids, batch_first=True, padding_value=self.tokenizer.pad_token_id
+        )
+        labels = [torch.tensor(x) for x in labels]
+        labels = torch.nn.utils.rnn.pad_sequence(labels, batch_first=True, padding_value=IGNORE_INDEX)
+        return dict(
+            input_ids=input_ids,
+            labels=labels,
+            attention_mask=input_ids.ne(self.tokenizer.pad_token_id),
+        )
+
 tokenizer.truncation_side = "left"
 tokenizer.padding_side = "left"
 tokenizer.pad_token = tokenizer.eos_token
-tokenized_dataset = train_dataset.map(preprocess_function, batched=True, remove_columns=train_dataset.column_names)
+data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer)
+# print(tokenizer('|finetune_right_pad_id|>'))
+
+# tokenized_dataset = train_dataset.map(preprocess_function, batched=2, remove_columns=train_dataset.column_names)
+tokenized_dataset = train_dataset.map(
+    train_tokenize_function,
+    batched = True,
+    batch_size = 3000,
+    remove_columns=train_dataset.column_names,
+    fn_kwargs={"tokenizer": tokenizer}
+)
 print(tokenized_dataset)
-tokenized_eval_dataset = test_dataset.map(preprocess_function, batched=True, remove_columns=test_dataset.column_names)
+tokenized_eval_dataset = test_dataset.map(
+    train_tokenize_function,
+    batched = True,
+    batch_size = 3000,
+    remove_columns=test_dataset.column_names,
+    fn_kwargs={"tokenizer": tokenizer}
+)
 
 # %cd /content/drive/MyDrive/qwen
 
 training_params = TrainingArguments(
     output_dir=f"./{type}/results" if args.save_path is None else args.save_path,
     num_train_epochs=5,
-    per_device_train_batch_size=1,
-    gradient_accumulation_steps=1,
+    per_device_train_batch_size=args.batch_size,
+    gradient_accumulation_steps=2,
     logging_steps=200,
     learning_rate=2e-4,
     logging_dir=f"./{type}/logs",
@@ -196,7 +296,8 @@ trainer = SFTTrainer(
     # max_seq_length=2048,
     args=training_params,
     packing=False,
-    # tokenizer = tokenizer,
+    tokenizer = tokenizer,
+    data_collator = data_collator
     # optimizers=(optimizer, scheduler) if model_path is not None else None,
     # overlap_comm = False ,
     

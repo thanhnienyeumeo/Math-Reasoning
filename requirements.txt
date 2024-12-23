@@ -7,3 +7,4 @@ transformers==4.46.3
 trl==0.12.0
 numpy==1.26.3
 bitsandbytes==0.45.0
+tensorboard
