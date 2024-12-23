@@ -142,7 +142,7 @@ for question, answer in test_dataset:
         except:
                 if "the answer is" in ans:
                     ans = ans[ans.index("the answer is") + len("the answer is:"):]
-                    if '<|endoftext|>' in ans or '<|im_end|>' in ans or '<|end_header_id|>' in ans:
+                    if '<|endoftext|>' in ans or '<|im_end|>' in ans or '<|eot_id|>' in ans:
                         ans = ans[:ans.index('<')]
                     ans = ans.strip()
                 elif "the final answer is" in ans:

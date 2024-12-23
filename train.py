@@ -61,7 +61,7 @@ if model_path is not None:
     based_model = AutoModelForCausalLM.from_pretrained(model_path,
     quantization_config=quant_config if args.quant else None,
     # torch_dtype=torch.float16,
-    torch_dtype= compute_dtype if torch.cuda.is_bf16_supported() else torch.float16,
+    torch_dtype= compute_dtype if torch.cuda.is_bf16_supported() else torch.float16 if '0.5b' not in args.model_name else torch.float32,
     device_map={'': torch.cuda.current_device()},
     attn_implementation=attn_implementation
     )
@@ -80,7 +80,7 @@ else:
     quantization_config=quant_config if args.quant else None,
     #   torch_dtype=torch.float32,
     # torch_dtype=torch.float16,
-    torch_dtype= compute_dtype if torch.cuda.is_bf16_supported() else torch.float16,
+    torch_dtype= compute_dtype if torch.cuda.is_bf16_supported() else torch.float16 if '0.5b' not in args.model_name else torch.float32,
     #   device_map={"":0}
     device_map={'': torch.cuda.current_device()},
     attn_implementation=attn_implementation
@@ -281,8 +281,9 @@ training_params = TrainingArguments(
     save_strategy="epoch" if args.save_strategy == 'epoch' else "steps",
     save_steps=6000 if args.save_steps is None else args.save_steps,
     # fp32=True,
-    bf16=torch.cuda.is_bf16_supported(),
-    fp16 = not torch.cuda.is_bf16_supported(),
+    bf16=torch.cuda.is_bf16_supported() and '0.5b' not in args.model_name,
+    fp16 = (not torch.cuda.is_bf16_supported()) and '0.5b' not in args.model_name,
+    fp32 = '0.5b' in args.model_name,
     evaluation_strategy="epoch",
     report_to = "tensorboard",
     
@@ -292,7 +293,7 @@ trainer = SFTTrainer(
     model=based_model,
     train_dataset=tokenized_dataset,
     eval_dataset=tokenized_eval_dataset,
-    peft_config=peft_params , #full finetuning
+    peft_config=peft_params if '0.5b' not in args.model_name else None, #full finetuning if model is 0.5b
     # max_seq_length=2048,
     args=training_params,
     packing=False,
