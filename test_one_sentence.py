@@ -36,7 +36,8 @@ input_phi = prompt_phi.format(instruction = question_train) #use for phi
 input_COT = prompt_COT.format(question = question_train) #use for COT
 model_name = args.model_name
 model_path = args.model_path
-
+if model_path is None:
+    model_path = model_name
 based_model = AutoModelForCausalLM.from_pretrained(model_path,
                                                    low_cpu_mem_usage=True,
     # quantization_config=quant_config,

@@ -1,1 +1,1 @@
-python train.py -q True -m meta-llama/Llama-3.2-3B-Instruct -n 8000 --type llama -r 8
+python train.py -q True -m meta-llama/Llama-3.2-3B-Instruct -n 8000 --type llama -r 32

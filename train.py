@@ -33,6 +33,8 @@ argparser.add_argument('--num_samples', '-n', type=int, default=None)
 argparser.add_argument('--save_path', type=str, default=None)
 argparser.add_argument('--save_strategy', '-s', type=str, default='epoch')
 argparser.add_argument('--save_steps', '-ss', type=int, default=60000)
+argparser.add_argument('--max_length', '-ml', type=int, default=512)
+argparser.add_argument('--padding', '-p', type=str, default= 'do_not_pad' )
 args = argparser.parse_args()
 
 model_name = args.model_name
@@ -115,7 +117,7 @@ elif args.dataset == 'metamath':
     if args.num_samples is not None:
         train_dataset = train_dataset.select(np.random.choice(len(train_dataset), args.num_samples))
     print(train_dataset)
-    dataset = train_dataset.train_test_split(test_size=0.1)
+    dataset = train_dataset.train_test_split(test_size=0.001)
     
     train_dataset = dataset['train']
     test_dataset = dataset['test']
@@ -145,13 +147,15 @@ def preprocess_function(examples):
     # print(targets[0])
     # model_inputs = tokenizer(inputs, max_length=512, truncation=True, padding="max_length")
     model_inputs = tokenizer(inputs,
-                             max_length=512, padding = True,
-                             truncation=True
+                             max_length=args.max_length, padding = args.padding,
+                            #  max_length=512, padding = True,
+                            #  truncation=True
                              )
     # labels = tokenizer(targets, max_length=512, truncation=True, padding = True)
     labels = tokenizer(targets,
-                       max_length=512, padding = True,
-                       truncation=True
+                          max_length=args.max_length, padding = args.padding,
+                    #    max_length=512, padding = True,
+                    #    truncation=True
                        )
     model_inputs["labels"] = labels["input_ids"]
     return model_inputs
@@ -161,7 +165,7 @@ tokenizer.truncation_side = "left"
 tokenizer.padding_side = "left"
 tokenizer.pad_token = tokenizer.eos_token
 tokenized_dataset = train_dataset.map(preprocess_function, batched=True, remove_columns=train_dataset.column_names)
-
+print(tokenized_dataset)
 tokenized_eval_dataset = test_dataset.map(preprocess_function, batched=True, remove_columns=test_dataset.column_names)
 
 # %cd /content/drive/MyDrive/qwen
@@ -180,7 +184,7 @@ training_params = TrainingArguments(
     bf16=torch.cuda.is_bf16_supported(),
     fp16 = not torch.cuda.is_bf16_supported(),
     evaluation_strategy="epoch",
-    report_to = "none"
+    report_to = "tensorboard",
     
 )
 
