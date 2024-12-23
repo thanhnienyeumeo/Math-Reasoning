@@ -1,6 +1,8 @@
 datasets==3.1.0
+groq==0.13.1
+numpy==2.2.1
 peft==0.14.0
-torch==2.5.0+cu124
+torch==2.4.1+cu124
 tqdm==4.67.1
 transformers==4.46.3
-trl==0.12.1
+trl==0.12.0
