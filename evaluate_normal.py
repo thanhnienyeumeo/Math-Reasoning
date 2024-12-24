@@ -75,7 +75,9 @@ def generate_answer_groq(prompt):
 prefix_prompt = '''Your task is to evaluate a generated answer from a model by comparing it with a correct reference answer. Determine if the generated answer matches the correct answer. If the generated answer is correct, respond with 1. If it is incorrect, respond with 0. Do not provide any other responses besides 1 or 0.'''
 
 def generate_prompt(question, answer, i, pred = None):
-        input = f'''<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n{question}\nPut your final answer within \\boxed{{}}.<|im_end|>\n<|im_start|>assistant\n'''
+        instruct = '\nPut your final answer within \\boxed{{}}.'
+        instruct = ''
+        input = f'''<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n{question}{instruct}<|im_end|>\n<|im_start|>assistant\n'''
         answer_model = ''
         if pred is not None:
             answer_model = pred
@@ -140,7 +142,13 @@ for question, answer in test_dataset:
                     print(ori_ans)
                     continue
         except:
-                if "the answer is" in ans:
+                if "####" in ans:
+                    ans = ans[ans.rindex(r'####') + 4:].strip()
+                    if '<|endoftext|>' in ans or '<|im_end|>' in ans or '<|eot_id|>' in ans:
+                        ans = ans[:ans.index('<')]
+                    ans = ans.strip()
+                
+                elif "the answer is" in ans:
                     ans = ans[ans.index("the answer is") + len("the answer is:"):]
                     if '<|endoftext|>' in ans or '<|im_end|>' in ans or '<|eot_id|>' in ans:
                         ans = ans[:ans.index('<')]
