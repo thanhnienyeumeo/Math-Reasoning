@@ -25,7 +25,7 @@ if model_path is None:
     model_path = model_name
 model = AutoModelForCausalLM.from_pretrained(model_path,
                                             low_cpu_mem_usage=True,
-    # torch_dtype=torch.float16,
+    torch_dtype=torch.float16,
     # quantization_config=quant_config,
     device_map={"":0}
 )
