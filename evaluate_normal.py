@@ -39,14 +39,19 @@ tokenizer = AutoTokenizer.from_pretrained(model_path)
 
 #load dataset:
 dataset = None
+problem, solution = None, None
 if args.dataset == 'gsm8k':
     # dataset = datasets.load_dataset('gsm8k', "main")
     dataset = datasets.load_dataset("gsm8k", "main")
+    problem = 'question'
+    solution = 'answer'
 elif args.dataset == 'math':
     dataset = datasets.load_dataset("lighteval/MATH", "all")
-
+    problem = 'problem'
+    solution = 'solution'
 train_dataset, test_dataset = dataset['train'], dataset['test']
-
+#keep only problem and solution columns
+test_dataset = train_dataset.map(lambda x: {problem: x[problem], solution: x[solution]})
 
 prompt = prompt_qwen if args.type == 'qwen' else prompt_phi if args.type == 'phi' else prompt_llama
 
