@@ -42,6 +42,8 @@ dataset = None
 if args.dataset == 'gsm8k':
     # dataset = datasets.load_dataset('gsm8k', "main")
     dataset = datasets.load_dataset("gsm8k", "main")
+elif args.dataset == 'math':
+    dataset = datasets.load_dataset("lighteval/MATH", "all")
 
 train_dataset, test_dataset = dataset['train'], dataset['test']
 
