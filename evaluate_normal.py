@@ -11,11 +11,16 @@ import argparse
 from copy import deepcopy
 import json
 from credential import GROQ_API_KEY
+import warnings
+warnings.filterwarnings("ignore")
+
 argparser = argparse.ArgumentParser()
 argparser.add_argument('--model_name', type=str, default='qwen/Qwen2.5-1.5B-Instruct')
 argparser.add_argument('--dataset', type=str, default='gsm8k')
 argparser.add_argument('--model_path', type=str, default= None)
 argparser.add_argument('--type', type=str, default='qwen')
+argparser.add_argument('--save_path', type=str, default='.')
+argparser.add_argument('--save_num', type=int, default=100)
 args = argparser.parse_args()
 
 
@@ -75,7 +80,7 @@ def generate_answer_groq(prompt):
 prefix_prompt = '''Your task is to evaluate a generated answer from a model by comparing it with a correct reference answer. Determine if the generated answer matches the correct answer. If the generated answer is correct, respond with 1. If it is incorrect, respond with 0. Do not provide any other responses besides 1 or 0.'''
 
 def generate_prompt(question, answer, i, pred = None):
-        instruct = '\nPut your final answer within \\boxed{{}}.'
+        # instruct = '\nPut your final answer within \\boxed{{}}.'
         instruct = ''
         input = f'''<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n{question}{instruct}<|im_end|>\n<|im_start|>assistant\n'''
         answer_model = ''
@@ -105,7 +110,7 @@ cnt_not_format = 0
 for question, answer in test_dataset:
     for i in tqdm(range(len(test_dataset))):
     # for i in tqdm(range(22,40)):
-        if i > 0 and i % 100 == 0:
+        if i > 0 and i % args.save_num == 0:
           print(f'Current accuracy at data {i} is: ', cnt / i)
           with open('all_ans.json', 'w') as f:
               json.dump(all_ans, f)
@@ -121,9 +126,9 @@ for question, answer in test_dataset:
         # ori_ans = output(input, max_length=1024)[0]['generated_text']
         # print(ori_ans)
         if args.type == 'qwen':
-            ori_ans = ori_ans[ori_ans.index('<|im_start|>assistant\n'):]
+            ori_ans = ori_ans[ori_ans.index('<|im_start|>assistant'):]
         elif args.type == 'phi':
-            ori_ans = ori_ans[ori_ans.index('<|assistant|>\n'):]
+            ori_ans = ori_ans[ori_ans.index('<|assistant|>'):]
         else:
             ori_ans = ori_ans[ori_ans.index('assistant<|end_header_id|>'):] 
         # print(ori_ans)
@@ -142,23 +147,26 @@ for question, answer in test_dataset:
                     print(ori_ans)
                     continue
         except:
+                ok = False
                 if "####" in ans:
                     ans = ans[ans.rindex(r'####') + 4:].strip()
                     if '<|endoftext|>' in ans or '<|im_end|>' in ans or '<|eot_id|>' in ans:
                         ans = ans[:ans.index('<')]
                     ans = ans.strip()
-                
-                elif "the answer is" in ans:
+                    ok  = True
+                if "the answer is" in ans:
                     ans = ans[ans.index("the answer is") + len("the answer is:"):]
                     if '<|endoftext|>' in ans or '<|im_end|>' in ans or '<|eot_id|>' in ans:
                         ans = ans[:ans.index('<')]
                     ans = ans.strip()
-                elif "the final answer is" in ans:
+                    ok = True
+                if "the final answer is" in ans:
                     ans = ans[ans.index("the final answer is") + len("the final answer is:"):]
                     if '<|endoftext|>' in ans or '<|im_end|>' in ans or '<|eot_id|>' in ans:
                         ans = ans[:ans.index('<')]
                     ans = ans.strip()
-                else:
+                    ok - True
+                if not ok :
                     print('not format. Evaluating using groq....')
                     print(ans)
                     prompt2, _ = generate_prompt(test_dataset[question][i], test_dataset[answer][i],i, pred = ori_ans)

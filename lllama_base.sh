@@ -1,0 +1,1 @@
+python train.py --model_name meta-llama/Llama-3.2-3B-instruct --type llama -r 64 -ph True -s steps -ss 20000 -b 1 -a "flash_attention_2" -f math

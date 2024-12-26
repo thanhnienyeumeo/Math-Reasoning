@@ -39,11 +39,12 @@ argparser.add_argument('--num_samples', '-n', type=int, default=None)
 argparser.add_argument('--save_path', type=str, default=None)
 argparser.add_argument('--save_strategy', '-s', type=str, default='epoch')
 argparser.add_argument('--save_steps', '-ss', type=int, default=60000)
-argparser.add_argument('--max_length', '-ml', type=int, default=512)
+# argparser.add_argument('--max_length', '-ml', type=int, default=512)
 argparser.add_argument('--padding', '-p', type=str, default= 'do_not_pad' )
 argparser.add_argument('--attn', '-a', type=str, default= None)
 argparser.add_argument('--batch_size', '-b', type=int, default= 1)
 argparser.add_argument('--push_to_hub', '-ph', type=bool, default=False)
+argparser.add_argument('--filter', '-f', type=str, default=None)
 args = argparser.parse_args()
 
 model_name = args.model_name
@@ -95,16 +96,17 @@ peft_params = LoraConfig(
     lora_dropout=0.1,
     bias="none",
     task_type="CAUSAL_LM",
-    target_modules=[
-"q_proj",
-"k_proj",
-"v_proj",
-"o_proj",
-"gate_proj",
-"up_proj",
-"down_proj",
-"lm_head",
-] 
+    target_modules= 'all-linear'
+#     target_modules=[
+# "q_proj",
+# "k_proj",
+# "v_proj",
+# "o_proj",
+# "gate_proj",
+# "up_proj",
+# "down_proj",
+# "lm_head",
+# ] 
 )
 
 import numpy as np
@@ -118,17 +120,21 @@ elif type == 'phi':
         suffix = "<|endoftext|>"
 if args.dataset == 'gsm8k':
     dataset = datasets.load_dataset('gsm8k', "main")
-    train_dataset, test_dataset = dataset['train'], dataset['test']
+    dataset = dataset['train'].train_test_split(test_size=0.001)
+    train_dataset = dataset['train']
+    test_dataset = dataset['test']
     question = 'question'
     answer = 'answer'
 elif args.dataset == 'metamath':
     dataset = datasets.load_dataset("Colder203/meta_math_smaller_than_1024")
     #choose only type=='gsm_ansaug'
     train_dataset = dataset['train']
-    train_dataset = train_dataset.filter(lambda x: x['type'].lower() == 'gsm_ansaug')
+    if args.filter is not None:
+        train_dataset = train_dataset.filter(lambda x: x['type'].lower() == f'{args.filter}_ansaug')
     
     if args.num_samples is not None:
         train_dataset = train_dataset.select(np.random.choice(len(train_dataset), args.num_samples))
+        args.num_samples = len(train_dataset)
     print(train_dataset)
     dataset = train_dataset.train_test_split(test_size=0.001)
     
@@ -272,31 +278,32 @@ tokenized_eval_dataset = test_dataset.map(
 # %cd /content/drive/MyDrive/qwen
 
 training_params = TrainingArguments(
-    output_dir=f"./{type}/results" if args.save_path is None else args.save_path,
+    output_dir=f"{type}/results" if args.save_path is None else args.save_path,
     num_train_epochs=5,
     per_device_train_batch_size=args.batch_size,
     gradient_accumulation_steps=1,
     logging_steps=200,
     learning_rate=2e-4,
-    logging_dir=f"./{type}/logs",
+    logging_dir=f"{type}/logs",
     save_strategy="epoch" if args.save_strategy == 'epoch' else "steps",
     save_steps=6000 if args.save_steps is None else args.save_steps,
     # fp32=True,
     bf16=torch.cuda.is_bf16_supported() and '0.5B' not in args.model_name,
     fp16 = (not torch.cuda.is_bf16_supported()) and '0.5B' not in args.model_name,
-    tf32 = torch.backends.cuda.matmul.allow_tf32,
-    evaluation_strategy="epoch",
+    # tf32 = torch.backends.cuda.matmul.allow_tf32,
+    # evaluation_strategy="epoch",
     report_to = "tensorboard",
     push_to_hub=args.push_to_hub,
+    hub_model_id = f"{type}_{args.dataset}_{args.num_samples}_{args.rank}_{args.attn}_{args.quant}" if args.push_to_hub else None,
     # hub_model_id = 'Colder203/qwen0.5b_gsm8k', #uncommnt this
     hub_token = HUGGINGFACE_TOKEN
 )
-# print(training_params.fp16)
+print("is support bf16: ", training_params.bf16)
 # print(training_params.tf32)
 trainer = SFTTrainer(
     model=based_model,
     train_dataset=tokenized_dataset,
-    eval_dataset=tokenized_eval_dataset,
+    # eval_dataset=tokenized_eval_dataset,
     peft_config=peft_params if '0.5B' not in args.model_name else None, #full finetuning if model is 0.5B
     # max_seq_length=2048,
     args=training_params,
@@ -308,14 +315,17 @@ trainer = SFTTrainer(
     
 )
 
-#turn off wandb
-# import os
-# os.environ["WANDB_DISABLED"] = 'true'
+#check gpu memory
+gpu_stats = torch.cuda.get_device_properties(0)
+start_gpu_memory = round(torch.cuda.max_memory_reserved() / 1024 / 1024 / 1024, 3)
+max_memory = round(gpu_stats.total_memory / 1024 / 1024 / 1024, 3)
+print(f"GPU = {gpu_stats.name}. Max memory = {max_memory} GB.")
+print(f"{start_gpu_memory} GB of memory reserved.")
 
-# trainer.train() #This is 0.5B
+
 if args.model_path is not None:
     trainer.train(resume_from_checkpoint=args.model_path)
 else:
-    trainer.train() #This is 1.5B
+    trainer.train()
 
 trainer.save_model(model_name)

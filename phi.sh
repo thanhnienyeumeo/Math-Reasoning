@@ -1,1 +1,1 @@
-python train.py
+python train.py -r 8 -q True --type phi -s steps -ss 20000 -ph True
