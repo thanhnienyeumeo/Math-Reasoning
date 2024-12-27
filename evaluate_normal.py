@@ -23,6 +23,25 @@ argparser.add_argument('--save_path', type=str, default='.')
 argparser.add_argument('--save_num', type=int, default=100)
 args = argparser.parse_args()
 
+dataset = None
+problem, solution = None, None
+if args.dataset == 'gsm8k':
+    # dataset = datasets.load_dataset('gsm8k', "main")
+    dataset = datasets.load_dataset("gsm8k", "main")
+    problem = 'question'
+    solution = 'answer'
+elif args.dataset == 'math':
+    dataset = datasets.load_dataset("lighteval/MATH", "all")
+    problem = 'problem'
+    solution = 'solution'
+train_dataset, test_dataset = dataset['train'], dataset['test']
+#keep only problem and solution columns
+train_dataset = train_dataset.remove_columns([col for col in train_dataset.column_names if col not in [problem, solution]])
+test_dataset = test_dataset.remove_columns([col for col in test_dataset.column_names if col not in [problem, solution]])
+print(test_dataset)
+# exit()
+
+
 
 model_name = args.model_name
 model_path = args.model_path
@@ -37,21 +56,6 @@ model = AutoModelForCausalLM.from_pretrained(model_path,
 
 tokenizer = AutoTokenizer.from_pretrained(model_path)
 
-#load dataset:
-dataset = None
-problem, solution = None, None
-if args.dataset == 'gsm8k':
-    # dataset = datasets.load_dataset('gsm8k', "main")
-    dataset = datasets.load_dataset("gsm8k", "main")
-    problem = 'question'
-    solution = 'answer'
-elif args.dataset == 'math':
-    dataset = datasets.load_dataset("lighteval/MATH", "all")
-    problem = 'problem'
-    solution = 'solution'
-train_dataset, test_dataset = dataset['train'], dataset['test']
-#keep only problem and solution columns
-test_dataset = train_dataset.map(lambda x: {problem: x[problem], solution: x[solution]})
 
 prompt = prompt_qwen if args.type == 'qwen' else prompt_phi if args.type == 'phi' else prompt_llama
 
@@ -142,7 +146,13 @@ for question, answer in test_dataset:
         ans = deepcopy(ori_ans)
         all_ans.append(ori_ans)
         true_ans = test_dataset[answer][i]
-        true_ans = true_ans[true_ans.rindex(r'####') + 4:].strip()
+        true_ans = true_ans.lower()
+        if "####" in true_ans:
+            true_ans = true_ans[true_ans.rindex(r'####') + 4:].strip()
+        if "the answer is" in true_ans:
+            true_ans = true_ans[true_ans.index("the answer is") + len("the answer is:"):]
+        if r'\boxed{' in true_ans:
+            true_ans = true_ans[true_ans.rindex(r'\boxed{') + 7:true_ans.rindex('}')]
         all_true_ans.append(true_ans)
         ans = ans.lower()
 

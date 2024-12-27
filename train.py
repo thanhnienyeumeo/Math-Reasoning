@@ -39,7 +39,7 @@ argparser.add_argument('--num_samples', '-n', type=int, default=None)
 argparser.add_argument('--save_path', type=str, default=None)
 argparser.add_argument('--save_strategy', '-s', type=str, default='epoch')
 argparser.add_argument('--save_steps', '-ss', type=int, default=60000)
-# argparser.add_argument('--max_length', '-ml', type=int, default=512)
+argparser.add_argument('--max_length', '-ml', type=int, default=512)
 argparser.add_argument('--padding', '-p', type=str, default= 'do_not_pad' )
 argparser.add_argument('--attn', '-a', type=str, default= None)
 argparser.add_argument('--batch_size', '-b', type=int, default= 1)
@@ -126,7 +126,7 @@ if args.dataset == 'gsm8k':
     question = 'question'
     answer = 'answer'
 elif args.dataset == 'metamath':
-    dataset = datasets.load_dataset("Colder203/meta_math_smaller_than_1024")
+    dataset = datasets.load_dataset(f"Colder203/meta_math_smaller_than_{args.max_length}")
     #choose only type=='gsm_ansaug'
     train_dataset = dataset['train']
     if args.filter is not None:
