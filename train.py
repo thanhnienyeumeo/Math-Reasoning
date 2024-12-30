@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 #load model name
 # model_name = "qwen/Qwen2.5-0.5B"
 import argparse
-from credential import HUGGINGFACE_TOKEN
+# from credential import HUGGINGFACE_TOKEN
 argparser = argparse.ArgumentParser()
 argparser.add_argument('--model_name', '-m', type=str, default='microsoft/Phi-3.5-mini-instruct')
 argparser.add_argument('--dataset', '-d', type=str, default='metamath')
@@ -45,6 +45,7 @@ argparser.add_argument('--attn', '-a', type=str, default= None)
 argparser.add_argument('--batch_size', '-b', type=int, default= 1)
 argparser.add_argument('--push_to_hub', '-ph', type=bool, default=False)
 argparser.add_argument('--filter', '-f', type=str, default=None)
+argparser.add_argument('--credential', '-c', type=str, default=None)
 args = argparser.parse_args()
 
 model_name = args.model_name
@@ -297,7 +298,8 @@ training_params = TrainingArguments(
     push_to_hub=args.push_to_hub,
     hub_model_id = f"{type}_{args.dataset}_{args.num_samples}_{args.rank}_{args.attn}_{args.quant}" if args.push_to_hub else None,
     # hub_model_id = 'Colder203/qwen0.5b_gsm8k', #uncommnt this
-    hub_token = HUGGINGFACE_TOKEN
+    # hub_token = HUGGINGFACE_TOKEN,
+    hub_token=args.credential
 )
 print("is support bf16: ", training_params.bf16)
 # print(training_params.tf32)
