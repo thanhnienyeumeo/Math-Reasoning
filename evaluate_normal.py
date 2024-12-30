@@ -10,17 +10,21 @@ from tqdm import tqdm
 import argparse
 from copy import deepcopy
 import json
-from credential import GROQ_API_KEY
+
 import warnings
+from unsloth import FastLanguageModel
 warnings.filterwarnings("ignore")
 
 argparser = argparse.ArgumentParser()
-argparser.add_argument('--model_name', type=str, default='qwen/Qwen2.5-1.5B-Instruct')
-argparser.add_argument('--dataset', type=str, default='gsm8k')
+argparser.add_argument('--model_name', '-m', type=str, default='qwen/Qwen2.5-1.5B-Instruct')
+argparser.add_argument('--dataset', '-d', type=str, default='gsm8k')
 argparser.add_argument('--model_path', type=str, default= None)
 argparser.add_argument('--type', type=str, default='qwen')
 argparser.add_argument('--save_path', type=str, default='.')
-argparser.add_argument('--save_num', type=int, default=100)
+argparser.add_argument('--save_num', '-s', type=int, default=100)
+argparser.add_argument('--unsloth', '-u', type=bool, default=False)
+argparser.add_argument('--max_new_token', '-t', type = int, default = 1024)
+argparser.add_argument('--credential', '-c', type = str, default = 'credential.json')
 args = argparser.parse_args()
 
 dataset = None
@@ -47,14 +51,25 @@ model_name = args.model_name
 model_path = args.model_path
 if model_path is None:
     model_path = model_name
-model = AutoModelForCausalLM.from_pretrained(model_path,
-                                            low_cpu_mem_usage=True,
-    torch_dtype=torch.float16,
-    # quantization_config=quant_config,
-    device_map={"":0}
-)
+if args.unsloth:
+    model, tokenizer = FastLanguageModel.from_pretrained(model_path,
+                                                         max_seq_length=1024,
+                                                         dtype = None,
+                                                         device_map={"" : torch.device("cuda:0")}
+                                                         )
+    model = FastLanguageModel.for_inference(model)
+else:
+    model = AutoModelForCausalLM.from_pretrained(model_path,
+                                                low_cpu_mem_usage=True,
+        torch_dtype=torch.float16,
+        # quantization_config=quant_config,
+        device_map={"":0}
+    
+    )
+    tokenizer = AutoTokenizer.from_pretrained(model_path)
 
-tokenizer = AutoTokenizer.from_pretrained(model_path)
+    
+    
 
 
 prompt = prompt_qwen if args.type == 'qwen' else prompt_phi if args.type == 'phi' else prompt_llama
@@ -68,7 +83,10 @@ wrong_ans = []
 import os
 import time
 from groq import Groq
-
+if args.credential is not None:
+    GROQ_API_KEY = args.credential
+else:
+    from credential import GROQ_API_KEY
 client = Groq(
     api_key=GROQ_API_KEY #get tokenn from groq
 )
@@ -131,11 +149,11 @@ for question, answer in test_dataset:
               json.dump(wrong_ans, f)
         input = prompt.format(instruction = test_dataset[question][i])
         # print(input)
-        output = model.generate(tokenizer(input, return_tensors='pt').input_ids.to('cuda'), early_stopping=True, max_new_tokens=1024, eos_token_id = tokenizer.eos_token_id, temperature = 0.2)
+        output = model.generate(tokenizer(input, return_tensors='pt').input_ids.to('cuda'), early_stopping=True, max_new_tokens=args.max_new_token, eos_token_id = tokenizer.eos_token_id, temperature = 0.2)
         
         ori_ans = tokenizer.decode(output[0])
         # ori_ans = output(input, max_length=1024)[0]['generated_text']
-        # print(ori_ans)
+        # print(ori_ans)d
         if args.type == 'qwen':
             ori_ans = ori_ans[ori_ans.index('<|im_start|>assistant'):]
         elif args.type == 'phi':
