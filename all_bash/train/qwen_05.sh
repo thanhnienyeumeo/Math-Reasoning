@@ -1,0 +1,1 @@
+python train.py -m Qwen/Qwen2.5-0.5B-Instruct --dataset metamath -b 4 --type qwen 

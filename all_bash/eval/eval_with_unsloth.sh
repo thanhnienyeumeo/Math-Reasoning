@@ -1,0 +1,1 @@
+python evaluate_normal.py --type phi --model_path phi_metaMath/checkpoint-71100 --dataset math --unsloth True

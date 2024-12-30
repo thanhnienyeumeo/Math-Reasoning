@@ -1,0 +1,1 @@
+python train.py -m Qwen/Qwen2.5-1.5B-Instruct --dataset gsm8k -b 1 -r 8 --type qwen -ph True

@@ -12,7 +12,7 @@ from copy import deepcopy
 import json
 
 import warnings
-from unsloth import FastLanguageModel
+
 warnings.filterwarnings("ignore")
 
 argparser = argparse.ArgumentParser()
@@ -52,6 +52,7 @@ model_path = args.model_path
 if model_path is None:
     model_path = model_name
 if args.unsloth:
+    from unsloth import FastLanguageModel
     model, tokenizer = FastLanguageModel.from_pretrained(model_path,
                                                          max_seq_length=1024,
                                                          dtype = None,

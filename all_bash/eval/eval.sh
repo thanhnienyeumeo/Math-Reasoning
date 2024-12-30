@@ -1,0 +1,1 @@
+python evaluate_normal.py --type llama --model_path llama/results/checkpoint-20000 --dataset math

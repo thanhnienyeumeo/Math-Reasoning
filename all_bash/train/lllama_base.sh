@@ -1,0 +1,1 @@
+python train.py --model_name meta-llama/Llama-3.2-3B-instruct --type llama -r 64 -ph True -b 1 -a "flash_attention_2" --filter math --save_path llama_math --max_length 512

@@ -1,0 +1,1 @@
+python train_unsloth.py -r 64 --type phi -s steps -ss 40000 -ph True  --filter gsm -b 1
