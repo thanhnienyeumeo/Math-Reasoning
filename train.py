@@ -278,15 +278,18 @@ tokenized_eval_dataset = test_dataset.map(
 )
 
 # %cd /content/drive/MyDrive/qwen
-
+if args.credential is not None:
+    HUGGINGFACE_TOKEN = args.credential
+else:
+    from credential import HUGGINGFACE_TOKEN
 training_params = TrainingArguments(
-    output_dir=f"{type}/results" if args.save_path is None else args.save_path,
+    output_dir=f"{type}/results" if args.save_path is None else args.save_path + '/results',
     num_train_epochs=5,
     per_device_train_batch_size=args.batch_size,
     gradient_accumulation_steps=1,
     logging_steps=200,
     learning_rate=2e-4,
-    logging_dir=f"{type}/logs",
+    logging_dir=f"{type}/logs" if args.save_path is None else args.save_path + '/logs',
     save_strategy="epoch" if args.save_strategy == 'epoch' else "steps",
     save_steps=6000 if args.save_steps is None else args.save_steps,
     # fp32=True,
@@ -296,10 +299,10 @@ training_params = TrainingArguments(
     # evaluation_strategy="epoch",
     report_to = "tensorboard",
     push_to_hub=args.push_to_hub,
-    hub_model_id = f"{type}_{args.dataset}_{args.num_samples}_{args.rank}_{args.attn}_{args.quant}" if args.push_to_hub else None,
+    hub_model_id = f"{type}_{args.dataset}_{args.num_samples}_{args.filter}_{args.rank}_{args.attn}_{args.quant}" if args.push_to_hub else None,
     # hub_model_id = 'Colder203/qwen0.5b_gsm8k', #uncommnt this
     # hub_token = HUGGINGFACE_TOKEN,
-    hub_token=args.credential
+    hub_token= HUGGINGFACE_TOKEN,
 )
 print("is support bf16: ", training_params.bf16)
 # print(training_params.tf32)
@@ -331,4 +334,4 @@ if args.model_path is not None:
 else:
     trainer.train()
 
-trainer.save_model(model_name)
+trainer.save_model(model_path) if args.save_path is None else trainer.save_model(args.save_path)
